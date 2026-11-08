@@ -22,6 +22,7 @@ POLL_PATH = '/api/mam/timer/poll'
 ACK_PATH = '/api/mam/timer/ack'
 DEVICE_ID = 'vertice24-timer'
 POLL_INTERVAL_MS = 3000
+POLL_ERROR_BACKOFF_MS = 15000
 
 # Shared with the main loop (single-threaded: threads proved unstable together
 # with the web server and the RMT peripheral).
@@ -30,7 +31,7 @@ ack_q = None      # (seq, ticks_ms when PLAY1 was sent) waiting to be reported
 can_run = lambda: True
 
 cfg = {'url': DEFAULT_URL, 'enabled': True, 'key': ''}
-state = {'linked': False, 'last_ok': 0, 'last_err': '', 'last_seq': None, 'last_poll': 0}
+state = {'linked': False, 'last_ok': 0, 'last_err': '', 'last_seq': None, 'last_poll': 0, 'next_poll_ms': 0}
 
 
 def normalize_url(url):
@@ -83,13 +84,10 @@ def _key_query():
     return '&key=' + cfg['key'] if cfg['key'] else ''
 
 
-def http_get(path, timeout=3):
-    """Minimal HTTP/1.0 GET. `path` may be a callable evaluated right before
-    the request is written (after the TLS handshake)."""
+def http_get(path, timeout=1.5):
+    """Minimal HTTP/1.0 GET with short timeout so web server never hangs."""
     scheme, host, port, base = _split(cfg['url'])
     if scheme != 'http':
-        # The TLS handshake blocks the whole MicroPython VM on this firmware
-        # build, so only plain HTTP is supported.
         raise OSError('solo http://')
     addr = socket.getaddrinfo(host, port)[0][-1]
     s = socket.socket()
@@ -120,14 +118,18 @@ def http_get(path, timeout=3):
 
 
 def due():
-    if not cfg['enabled']:
+    if not cfg['enabled'] or not cfg['url']:
         return False
-    return time.ticks_diff(time.ticks_ms(), state['last_poll']) >= POLL_INTERVAL_MS or state['last_poll'] == 0
+    now = time.ticks_ms()
+    if state['next_poll_ms'] != 0 and time.ticks_diff(now, state['next_poll_ms']) < 0:
+        return False
+    return time.ticks_diff(now, state['last_poll']) >= POLL_INTERVAL_MS or state['last_poll'] == 0
 
 
 def poll_once():
     """Returns a command dict or None."""
-    state['last_poll'] = time.ticks_ms() or 1
+    now = time.ticks_ms()
+    state['last_poll'] = now or 1
     try:
         code, body = http_get(POLL_PATH + '?device=' + DEVICE_ID + _key_query())
         if code != 200:
@@ -138,10 +140,12 @@ def poll_once():
         state['linked'] = True
         state['last_ok'] = time.time()
         state['last_err'] = ''
+        state['next_poll_ms'] = time.ticks_add(now, POLL_INTERVAL_MS)
         return data if data.get('cmd') else None
     except Exception as e:
         state['linked'] = False
         state['last_err'] = str(e)
+        state['next_poll_ms'] = time.ticks_add(now, POLL_ERROR_BACKOFF_MS)
         return None
 
 

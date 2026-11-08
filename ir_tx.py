@@ -67,13 +67,14 @@ def return_to_clock():
     send(CODES['RET'])
     print('Returned to clock display (RET)')
 
-def countdown(minutes=1, seconds=0, offset_sec=10):
+def countdown(minutes=1, seconds=0, offset_sec=12):
     """
     Configura e inicia un temporizador de cuenta regresiva en el reloj CHKOSDA.
-    Resta los 10 segundos del proceso de configuración por infrarrojos para que
+    Resta los 12 segundos del proceso de configuración por infrarrojos para que
     el reloj físico arranque exactamente con los segundos restantes, en sincronía
     perfecta con las pantallas web que inician en tiempo real.
-    Garantiza retardos seguros para que JAMÁS se salte ningún MODE ni programe horas.
+    Garantiza una ventana de 2.2s en los 4 campos (Días, Horas, Minutos, Segundos)
+    para que JAMÁS se rechace PLAY1 ni salte a horas o minutos erróneos.
     """
     total_sec = minutes * 60 + seconds
     if offset_sec > 0 and total_sec > offset_sec:
@@ -119,13 +120,15 @@ def countdown(minutes=1, seconds=0, offset_sec=10):
     send(digit_code(m_dec)); time.sleep_ms(180)
     send(digit_code(m_uni)); time.sleep_ms(2100)
 
-    # 6. MODE 4 (Segundos: 2 dígitos -> SS)
+    # 6. MODE 4 (Segundos: 2 dígitos -> SS) + ventana de 2.2s
+    # CRÍTICO: La ventana de 2.2s DEBE esperarse también en Segundos antes de PLAY1,
+    # de lo contrario el reloj ignora PLAY1 por tener la entrada abierta y cancela los segundos!
     send(CODES['MODE'])
     time.sleep_ms(500)
     s_dec = (prog_s % 60) // 10
     s_uni = prog_s % 60
     send(digit_code(s_dec)); time.sleep_ms(180)
-    send(digit_code(s_uni)); time.sleep_ms(500)
+    send(digit_code(s_uni)); time.sleep_ms(2200)
 
     # 7. Iniciar con PLAY
     send(CODES['PLAY1'])
