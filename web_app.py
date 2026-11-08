@@ -400,8 +400,11 @@ function startLocalTimer(totalSec) {
 function triggerTimer(m, s) {
   if (isBusy) return;
   if (navigator.vibrate) navigator.vibrate(10);
+  clearInterval(countdownInterval);
+  const disp = document.getElementById('live_timer');
   const st = document.getElementById('status_msg');
-  st.innerText = 'Transmitiendo ' + m + 'm ' + s + 's al reloj...';
+  disp.innerText = formatTime(m * 60 + s);
+  st.innerText = 'Programando reloj por IR (~11s)...';
   st.style.color = '#FF9F0A';
   setButtonsDisabled(true);
   
@@ -411,7 +414,7 @@ function triggerTimer(m, s) {
       st.innerText = msg;
       st.style.color = '#30D158';
       startLocalTimer(m * 60 + s);
-      setTimeout(() => setButtonsDisabled(false), 3000);
+      setButtonsDisabled(false);
     })
     .catch(e => {
       st.innerText = 'Error de conexión';
@@ -601,9 +604,10 @@ def start_server(port=80):
                     send_resp(cl, 'Transmision ocupada, reintenta en un momento', ctype='text/plain; charset=utf-8')
                     cl.close()
                 else:
-                    send_resp(cl, 'Temporizador de ' + str(m) + 'm ' + str(s_val) + 's iniciado', ctype='text/plain; charset=utf-8')
-                    cl.close()
+                    # Ejecutar primero la secuencia IR completa y responder en el instante exacto en que se envía PLAY1
                     _do_countdown(m, s_val)
+                    send_resp(cl, 'Temporizador de ' + str(m) + 'm ' + str(s_val) + 's en marcha', ctype='text/plain; charset=utf-8')
+                    cl.close()
                 continue
             elif path == '/ret':
                 send_resp(cl, 'Regresando a modo reloj...', ctype='text/plain; charset=utf-8')
