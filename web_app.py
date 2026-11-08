@@ -606,7 +606,7 @@ function saveMam() {
 }
 
 loadMam();
-setInterval(loadMam, 1500);
+setInterval(loadMam, 2500);
 </script>
 </body>
 </html>
