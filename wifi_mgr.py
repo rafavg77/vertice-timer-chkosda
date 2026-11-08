@@ -3,6 +3,13 @@ import time
 import json
 import os
 
+HOSTNAME = 'timer'
+
+try:
+    network.hostname(HOSTNAME)
+except Exception:
+    pass
+
 CONFIG_FILE = '/wifi_config.json'
 
 def unquote(s):
@@ -69,7 +76,15 @@ def scan_networks():
     return nets
 
 def connect_sta(ssid, password, timeout=12):
+    try:
+        network.hostname(HOSTNAME)
+    except Exception:
+        pass
     sta = network.WLAN(network.STA_IF)
+    try:
+        sta.config(dhcp_hostname=HOSTNAME)
+    except Exception:
+        pass
     sta.active(True)
     try:
         sta.disconnect()
@@ -87,18 +102,8 @@ def connect_sta(ssid, password, timeout=12):
         time.sleep(0.5)
     
     if sta.isconnected():
-        # Ensure static IP 192.168.68.97 so the console is always at the fixed address
-        try:
-            cur = sta.ifconfig()
-            # If router gave a different IP or subnet is 192.168.68.x
-            mask = cur[1] or '255.255.252.0'
-            gw = cur[2] or '192.168.68.1'
-            dns = cur[3] or '192.168.68.70'
-            sta.ifconfig(('192.168.68.97', mask, gw, dns))
-        except Exception as e:
-            print('Aviso configurando IP estática:', e)
         ip = sta.ifconfig()[0]
-        print('CONEXION EXITOSA! IP:', ip)
+        print('CONEXION EXITOSA! IP:', ip, '| mDNS: http://' + HOSTNAME + '.local')
         return ip
     else:
         print('TIMEOUT o fallo al conectar con:', clean_ssid)

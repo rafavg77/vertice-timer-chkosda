@@ -214,7 +214,7 @@ function connectWifi(e) {
     .then(resp => {
       if (resp.startsWith('OK:')) {
         const ip = resp.substring(3);
-        st.innerHTML = '<div class="success-box"><div style="font-weight:700; color:#30D158;">¡Conectado exitosamente!</div><div style="font-size:0.85rem; color:#EBEBF5; margin-top:4px;">El punto de acceso se apagará. Conéctate a tu Wi-Fi y abre la consola:</div><a href="' + ip + '" class="btn-go">Abrir Consola (' + ip + ')</a></div>';
+        st.innerHTML = '<div class="success-box"><div style="font-weight:700; color:#30D158;">¡Conectado exitosamente!</div><div style="font-size:0.85rem; color:#EBEBF5; margin-top:4px;">El punto de acceso se apagará. Conéctate a tu Wi-Fi y abre:<br><b style="color:#64D2FF; font-size:1.1rem;">http://timer.local</b><br><span style="font-size:0.75rem; color:var(--text-secondary);">(o mediante IP: ' + ip + ')</span></div><a href="http://timer.local" class="btn-go">Abrir Consola (timer.local)</a></div>';
         document.getElementById('wifi_form').style.display = 'none';
       } else {
         st.innerHTML = '<span style="color:#FF453A;">' + resp + '</span>';

@@ -35,6 +35,12 @@ if boot_btn.value() == 0:
         wifi_mgr.clear_config()
         blink_led(times=15, on_ms=60, off_ms=60)
 
+# Configurar Hostname antes de activar interfaces para mDNS (timer.local)
+try:
+    network.hostname('timer')
+except Exception:
+    pass
+
 # Siempre inicializar interfaces
 ap = network.WLAN(network.AP_IF)
 sta = network.WLAN(network.STA_IF)
@@ -54,7 +60,7 @@ if cfg and 'ssid' in cfg and cfg['ssid']:
         ap.active(False)
         blink_led(times=3, on_ms=150, off_ms=150)
         print('CONEXIÓN EXITOSA! AP apagado.')
-        print('Consola activa en red local: http://' + sta_ip)
+        print('Consola activa en red local: http://' + sta_ip + ' (o http://timer.local/)')
     else:
         print('No se pudo conectar a la red guardada.')
 
