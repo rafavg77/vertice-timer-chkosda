@@ -87,6 +87,16 @@ def connect_sta(ssid, password, timeout=12):
         time.sleep(0.5)
     
     if sta.isconnected():
+        # Ensure static IP 192.168.68.97 so the console is always at the fixed address
+        try:
+            cur = sta.ifconfig()
+            # If router gave a different IP or subnet is 192.168.68.x
+            mask = cur[1] or '255.255.252.0'
+            gw = cur[2] or '192.168.68.1'
+            dns = cur[3] or '192.168.68.70'
+            sta.ifconfig(('192.168.68.97', mask, gw, dns))
+        except Exception as e:
+            print('Aviso configurando IP estática:', e)
         ip = sta.ifconfig()[0]
         print('CONEXION EXITOSA! IP:', ip)
         return ip

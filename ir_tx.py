@@ -67,26 +67,17 @@ def return_to_clock():
     send(CODES['RET'])
     print('Returned to clock display (RET)')
 
-def countdown(minutes=1, seconds=0, offset_sec=12):
+def countdown(minutes=1, seconds=0):
     """
     Configura e inicia un temporizador de cuenta regresiva en el reloj CHKOSDA.
-    Resta los 12 segundos del proceso de configuración por infrarrojos para que
-    el reloj físico arranque exactamente con los segundos restantes, en sincronía
-    perfecta con las pantallas web que inician en tiempo real.
-    Garantiza una ventana de 2.2s en los 4 campos (Días, Horas, Minutos, Segundos)
-    para que JAMÁS se rechace PLAY1 ni salte a horas o minutos erróneos.
+    Programa exactamente los minutos y segundos solicitados (Días=000, Horas=00, Minutos=MM, Segundos=SS).
+    Respeta estrictamente la ventana de 2.2s en todos los campos (incluyendo Segundos antes de PLAY1)
+    para que JAMÁS rechace PLAY1 ni salte a horas o minutos erróneos.
     """
-    total_sec = minutes * 60 + seconds
-    if offset_sec > 0 and total_sec > offset_sec:
-        total_sec -= offset_sec
-    elif total_sec <= offset_sec and total_sec > 0:
-        total_sec = min(total_sec, 5)
-
-    prog_m = (total_sec // 60) % 100
-    prog_s = total_sec % 60
+    prog_m = minutes % 100
+    prog_s = seconds % 60
     
-    print('Programando reloj físico para {:02d}:{:02d} (solicitado {:02d}:{:02d} - {}s IR)...'.format(
-        prog_m, prog_s, minutes, seconds, offset_sec))
+    print('Programando reloj físico para {:02d}:{:02d}...'.format(prog_m, prog_s))
     t0 = time.ticks_ms()
 
     # 1. Asegurar pantalla de reloj normal

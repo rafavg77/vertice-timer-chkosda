@@ -628,7 +628,7 @@ def _do_countdown(m, s):
         active_timer['started_at_ms'] = time.ticks_ms()
         active_timer['running'] = True
         active_timer['programming'] = True
-        ir_tx.countdown(m, s, offset_sec=12)
+        ir_tx.countdown(m, s)
     except Exception as e:
         print('Error countdown:', e)
         active_timer['running'] = False
