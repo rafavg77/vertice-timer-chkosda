@@ -7,6 +7,8 @@ import ir_tx
 import wifi_mgr
 import mam_link
 
+VERSION = 'eb541ba'
+
 is_transmitting = False
 current_mode = 'control'
 local_ip = '0.0.0.0'
@@ -301,6 +303,61 @@ HTML_CONTROL = """<!DOCTYPE html>
     font-size: 0.9rem; font-weight: 600; cursor: pointer; width: 100%;
   }
   .mam-toggle { font-size: 0.8rem; color: var(--text-secondary); display: flex; align-items: center; gap: 0.5rem; }
+  .mam-toggle-box {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--glass-border);
+    padding: 4px 10px;
+    border-radius: 999px;
+  }
+  .switch {
+    position: relative;
+    display: inline-block;
+    width: 32px;
+    height: 18px;
+    vertical-align: middle;
+  }
+  .switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+  .slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: rgba(255, 255, 255, 0.25);
+    transition: .2s ease;
+    border-radius: 18px;
+  }
+  .slider:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 2px;
+    bottom: 2px;
+    background-color: white;
+    transition: .2s ease;
+    border-radius: 50%;
+  }
+  input:checked + .slider {
+    background-color: #30D158;
+  }
+  input:checked + .slider:before {
+    transform: translateX(14px);
+  }
+  .version-tag {
+    text-align: center;
+    margin-top: 1.2rem;
+    margin-bottom: 0.3rem;
+    font-size: 0.72rem;
+    color: rgba(255, 255, 255, 0.3);
+    font-family: ui-monospace, "SF Mono", monospace;
+    letter-spacing: 0.05em;
+  }
   .header { text-align: center; }
   h1 { font-size: 1.65rem; font-weight: 700; letter-spacing: -0.03em; }
   .subtitle { font-size: 0.85rem; color: var(--text-secondary); margin-top: 2px; }
@@ -361,7 +418,13 @@ HTML_CONTROL = """<!DOCTYPE html>
   <div class="top-bar">
     <div class="brand-badge"><span class="pulse-dot"></span> Vertice24 Timer</div>
     <div class="top-actions">
-      <button onclick="openMamModal()" class="btn-wifi-config" id="top_mam_btn">☁️ MAM: ...</button>
+      <div class="mam-toggle-box" title="Sincronización con MAM Live">
+        <label class="switch">
+          <input type="checkbox" id="mam_quick_toggle" onchange="toggleMamSync(this.checked)">
+          <span class="slider"></span>
+        </label>
+        <button onclick="openMamModal()" class="btn-wifi-config" id="top_mam_btn" style="border:none; background:transparent; padding:0; font-size:0.75rem;">☁️ MAM: ...</button>
+      </div>
       <a href="/setup" class="btn-wifi-config">⚙️ Wi-Fi</a>
     </div>
   </div>
@@ -395,6 +458,8 @@ HTML_CONTROL = """<!DOCTYPE html>
     </div>
     <button class="btn-start-custom" onclick="triggerCustom()">Iniciar Temporizador</button>
   </div>
+
+  <div class="version-tag">Commit: eb541ba</div>
 </div>
 
 <!-- Modal Servidor MAM -->
@@ -506,12 +571,26 @@ function triggerCustom() {
   triggerTimer(m, s);
 }
 
+function toggleMamSync(enabled) {
+  const en = enabled ? '1' : '0';
+  const topBtn = document.getElementById('top_mam_btn');
+  if (topBtn) topBtn.innerText = enabled ? '☁️ MAM: Conectando...' : '☁️ MAM: OFF';
+  fetch('/mam-toggle?enabled=' + en)
+    .then(r => r.json())
+    .then(d => {
+      renderMam(d);
+    })
+    .catch(() => {});
+}
+
 function renderMam(d) {
   const chip = document.getElementById('mam_chip');
   const topBtn = document.getElementById('top_mam_btn');
   const inp = document.getElementById('mam_url');
+  const quickToggle = document.getElementById('mam_quick_toggle');
   if (document.activeElement !== inp && d.url) inp.value = d.url;
   document.getElementById('mam_enabled').checked = d.enabled;
+  if (quickToggle) quickToggle.checked = d.enabled;
   if (!d.enabled) {
     if (chip) { chip.className = 'mam-chip'; chip.innerText = 'Desactivado'; }
     if (topBtn) { topBtn.innerText = '☁️ MAM: OFF'; topBtn.style.color = 'var(--text-secondary)'; }
@@ -802,13 +881,29 @@ def start_server(port=80):
                 import json
                 st = mam_link.status()
                 st['timer'] = _get_timer_state()
+                st['version'] = VERSION
+                send_resp(cl, json.dumps(st), ctype='application/json')
+            elif path == '/mam-toggle':
+                import json
+                params = parse_query(qs)
+                en = params.get('enabled', '1') == '1'
+                mam_link.set_enabled(en)
+                st = mam_link.status()
+                st['timer'] = _get_timer_state()
+                st['version'] = VERSION
                 send_resp(cl, json.dumps(st), ctype='application/json')
             elif path == '/mam-save':
                 import json
                 params = parse_query(qs)
-                mam_link.save(params.get('url', ''), params.get('enabled', '1') == '1', mam_link.cfg['key'])
+                u = params.get('url', '')
+                en = params.get('enabled', '1') == '1'
+                if u:
+                    mam_link.save(u, en, mam_link.cfg.get('key', ''))
+                else:
+                    mam_link.set_enabled(en)
                 st = mam_link.status()
                 st['timer'] = _get_timer_state()
+                st['version'] = VERSION
                 send_resp(cl, json.dumps(st), ctype='application/json')
             elif path == '/setup':
                 send_resp(cl, HTML_SETUP)

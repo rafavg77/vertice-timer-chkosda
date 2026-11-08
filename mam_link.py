@@ -56,14 +56,31 @@ def load():
 
 
 def save(url, enabled, key=''):
-    cfg['url'] = normalize_url(url)
+    if url:
+        cfg['url'] = normalize_url(url)
     cfg['enabled'] = bool(enabled)
-    cfg['key'] = key or ''
+    if key is not None:
+        cfg['key'] = key or ''
     with open(CONFIG_FILE, 'w') as f:
         f.write(json.dumps(cfg))
     state['linked'] = False
     state['last_err'] = ''
     state['last_poll'] = 0
+    state['next_poll_ms'] = 0
+    return cfg
+
+
+def set_enabled(enabled):
+    cfg['enabled'] = bool(enabled)
+    try:
+        with open(CONFIG_FILE, 'w') as f:
+            f.write(json.dumps(cfg))
+    except Exception:
+        pass
+    state['linked'] = False
+    state['last_err'] = ''
+    state['last_poll'] = 0
+    state['next_poll_ms'] = 0
     return cfg
 
 
