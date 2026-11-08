@@ -508,7 +508,7 @@ def send_resp(cl, body, ctype='text/html; charset=utf-8', status='200 OK'):
         raw = body.encode()
     else:
         raw = body
-    header = 'HTTP/1.1 ' + status + '\r\nContent-Type: ' + ctype + '\r\nContent-Length: ' + str(len(raw)) + '\r\nConnection: close\r\n\r\n'
+    header = 'HTTP/1.1 ' + status + '\r\nContent-Type: ' + ctype + '\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: ' + str(len(raw)) + '\r\nConnection: close\r\n\r\n'
     cl.sendall(header.encode())
     for i in range(0, len(raw), 1024):
         cl.sendall(raw[i:i+1024])
@@ -580,6 +580,9 @@ def start_server(port=80):
                 nets = wifi_mgr.scan_networks()
                 import json
                 send_resp(cl, json.dumps(nets), ctype='application/json')
+            elif path == '/status':
+                import json
+                send_resp(cl, json.dumps({'status': 'ok', 'service': 'vertice24-timer', 'ip': local_ip, 'transmitting': is_transmitting}), ctype='application/json')
             elif path == '/save-wifi':
                 params = parse_query(qs)
                 raw_ssid = params.get('ssid', '')
