@@ -5,6 +5,7 @@ import time
 import machine
 import ir_tx
 import wifi_mgr
+import mam_link
 
 is_transmitting = False
 current_mode = 'control'
@@ -322,6 +323,27 @@ HTML_CONTROL = """<!DOCTYPE html>
     border-radius: 12px; min-height: 44px; font-size: 0.95rem; font-weight: 600; cursor: pointer;
   }
   .btn-start-custom:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  .mam-card {
+    background: rgba(28, 28, 30, 0.5); border: 1px solid var(--glass-border); border-radius: 16px;
+    padding: 0.7rem 0.8rem; display: flex; flex-direction: column; gap: 0.5rem;
+  }
+  .mam-head { display: flex; justify-content: space-between; align-items: center; }
+  .mam-title { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; color: var(--text-secondary); }
+  .mam-chip { font-size: 0.7rem; font-weight: 600; padding: 2px 9px; border-radius: 999px; background: rgba(255,255,255,0.08); color: var(--text-secondary); }
+  .mam-chip.ok { background: rgba(48,209,88,0.18); color: #30D158; }
+  .mam-chip.err { background: rgba(255,69,58,0.18); color: #FF453A; }
+  .mam-row { display: flex; gap: 0.5rem; }
+  .mam-input {
+    flex: 1; min-width: 0; height: 38px; background: rgba(0,0,0,0.5); border: 1px solid var(--glass-border);
+    border-radius: 10px; color: var(--text-primary); font-size: 0.82rem; padding: 0 0.6rem;
+    font-family: ui-monospace, "SF Mono", monospace;
+  }
+  .mam-save {
+    background: var(--apple-blue); border: none; color: #FFF; border-radius: 10px; padding: 0 0.9rem;
+    font-size: 0.82rem; font-weight: 600; cursor: pointer;
+  }
+  .mam-toggle { font-size: 0.78rem; color: var(--text-secondary); display: flex; align-items: center; gap: 0.4rem; }
 </style>
 </head>
 <body>
@@ -329,6 +351,18 @@ HTML_CONTROL = """<!DOCTYPE html>
   <div class="top-bar">
     <div class="brand-badge"><span class="pulse-dot"></span> Vertice24 Timer</div>
     <a href="/setup" class="btn-wifi-config">⚙️ Wi-Fi</a>
+  </div>
+
+  <div class="mam-card">
+    <div class="mam-head">
+      <span class="mam-title">Servidor MAM</span>
+      <span class="mam-chip" id="mam_chip">...</span>
+    </div>
+    <div class="mam-row">
+      <input type="text" class="mam-input" id="mam_url" placeholder="http://mam.ejemplo.com" autocapitalize="off" autocorrect="off" spellcheck="false">
+      <button class="mam-save" id="mam_save" onclick="saveMam()">Guardar</button>
+    </div>
+    <label class="mam-toggle"><input type="checkbox" id="mam_enabled" checked> Sincronizar con MAM</label>
   </div>
 
   <div class="header">
@@ -455,6 +489,34 @@ function triggerCustom() {
   if (m === 0 && s === 0) { alert('Ingresa al menos 1 segundo'); return; }
   triggerTimer(m, s);
 }
+
+function renderMam(d) {
+  const chip = document.getElementById('mam_chip');
+  const inp = document.getElementById('mam_url');
+  if (document.activeElement !== inp) inp.value = d.url;
+  document.getElementById('mam_enabled').checked = d.enabled;
+  if (!d.enabled) { chip.className = 'mam-chip'; chip.innerText = 'Desactivado'; }
+  else if (d.linked) { chip.className = 'mam-chip ok'; chip.innerText = 'Conectado'; }
+  else { chip.className = 'mam-chip err'; chip.innerText = d.error ? 'Sin conexion' : 'Conectando...'; }
+}
+
+function loadMam() {
+  fetch('/mam-status').then(r => r.json()).then(renderMam).catch(() => {});
+}
+
+function saveMam() {
+  const url = encodeURIComponent(document.getElementById('mam_url').value.trim());
+  const en = document.getElementById('mam_enabled').checked ? '1' : '0';
+  const btn = document.getElementById('mam_save');
+  btn.innerText = '...';
+  fetch('/mam-save?url=' + url + '&enabled=' + en)
+    .then(r => r.json())
+    .then(d => { renderMam(d); btn.innerText = 'Guardado'; setTimeout(() => btn.innerText = 'Guardar', 1500); })
+    .catch(() => { btn.innerText = 'Error'; setTimeout(() => btn.innerText = 'Guardar', 1500); });
+}
+
+loadMam();
+setInterval(loadMam, 5000);
 </script>
 </body>
 </html>
@@ -486,6 +548,27 @@ def _do_action(act):
     finally:
         is_transmitting = False
 
+def _mam_exec():
+    """Run the command fetched by the MAM worker thread (IR must stay on the main thread)."""
+    cmd = mam_link.inbox
+    mam_link.inbox = None
+    if not cmd:
+        return
+    seq = cmd.get('seq')
+    name = cmd.get('cmd')
+    if seq == mam_link.state['last_seq']:
+        return
+    mam_link.state['last_seq'] = seq
+    print('MAM cmd:', name, seq)
+    if name == 'timer':
+        _do_countdown(int(cmd.get('m', 1)), int(cmd.get('s', 0)))
+        # The worker reports how long ago PLAY1 was sent so the server can
+        # start its countdown in lockstep with the physical clock.
+        mam_link.ack_q = (seq, time.ticks_ms())
+    elif name in ('ret', 'play', 'mute'):
+        _do_action(name)
+        mam_link.ack_q = (seq, 0)
+
 def _turn_off_ap_later():
     time.sleep(3)
     try:
@@ -509,9 +592,9 @@ def send_resp(cl, body, ctype='text/html; charset=utf-8', status='200 OK'):
     else:
         raw = body
     header = 'HTTP/1.1 ' + status + '\r\nContent-Type: ' + ctype + '\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: ' + str(len(raw)) + '\r\nConnection: close\r\n\r\n'
-    cl.sendall(header.encode())
+    cl.write(header.encode())
     for i in range(0, len(raw), 1024):
-        cl.sendall(raw[i:i+1024])
+        cl.write(raw[i:i+1024])
 
 def start_server(port=80):
     global current_mode, local_ip
@@ -523,6 +606,7 @@ def start_server(port=80):
     s.settimeout(0.25)
     print('Servidor Web iniciado en puerto', port, '| Modo:', current_mode)
     btn_pressed_since = None
+    mam_link.can_run = lambda: current_mode == 'control'
 
     while True:
         try:
@@ -552,6 +636,10 @@ def start_server(port=80):
             try:
                 cl, addr_client = s.accept()
             except OSError:
+                mam_link.step()
+                if mam_link.inbox is not None:
+                    _mam_exec()
+                    mam_link.step()
                 continue
             cl.settimeout(2.5)
             req = b''
@@ -597,6 +685,14 @@ def start_server(port=80):
                     send_resp(cl, 'OK:http://' + ip, ctype='text/plain; charset=utf-8')
                 else:
                     send_resp(cl, 'Error: No se pudo conectar a ' + clean_ssid + '. Verifica la clave.', ctype='text/plain; charset=utf-8')
+            elif path == '/mam-status':
+                import json
+                send_resp(cl, json.dumps(mam_link.status()), ctype='application/json')
+            elif path == '/mam-save':
+                import json
+                params = parse_query(qs)
+                mam_link.save(params.get('url', ''), params.get('enabled', '1') == '1', mam_link.cfg['key'])
+                send_resp(cl, json.dumps(mam_link.status()), ctype='application/json')
             elif path == '/setup':
                 send_resp(cl, HTML_SETUP)
             elif path == '/timer':

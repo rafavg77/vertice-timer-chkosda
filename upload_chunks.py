@@ -56,6 +56,7 @@ time.sleep(0.5)
 s.read_all()
 
 # DO NOT delete wifi_config.json - keep saved network!
+upload_in_chunks(s, 'mam_link.py', '/mam_link.py')
 upload_in_chunks(s, 'ir_tx.py', '/ir_tx.py')
 upload_in_chunks(s, 'web_app.py', '/web_app.py')
 upload_in_chunks(s, 'main.py', '/main.py')
