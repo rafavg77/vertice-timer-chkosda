@@ -71,54 +71,59 @@ def countdown(minutes=1, seconds=0):
     """
     Configura e inicia un temporizador de cuenta regresiva en el reloj CHKOSDA.
     Programa exactamente los minutos y segundos solicitados (Días=000, Horas=00, Minutos=MM, Segundos=SS).
-    Respeta estrictamente la ventana de 2.2s en todos los campos (incluyendo Segundos antes de PLAY1)
-    para que JAMÁS rechace PLAY1 ni salte a horas o minutos erróneos.
+    Respeta estrictamente los tiempos de procesamiento de hardware del reloj CHKOSDA:
+    - 1000ms tras RET
+    - 600ms tras CD_SET y tras cada pulsación de MODE
+    - 200ms entre dígitos
+    - 2100ms de ventana de cierre numérico (Días=000, Horas=00, Minutos=MM)
+    - 2200ms de ventana de cierre numérico en Segundos antes de PLAY1
+    Garantiza que JAMÁS se salte un MODE, que no programe horas ni 50 minutos.
     """
     prog_m = minutes % 100
     prog_s = seconds % 60
     
-    print('Programando reloj físico para {:02d}:{:02d}...'.format(prog_m, prog_s))
+    print('Configurando cuenta {:02d}:{:02d}...'.format(prog_m, prog_s))
     t0 = time.ticks_ms()
 
     # 1. Asegurar pantalla de reloj normal
     send(CODES['RET'])
-    time.sleep_ms(700)
+    time.sleep_ms(1000)
 
-    # 2. Doble pulsación CD SET en rápida sucesión
+    # 2. Doble pulsación CD SET en rápida sucesión (180ms)
     send(CODES['CD_SET'])
     time.sleep_ms(180)
     send(CODES['CD_SET'])
-    time.sleep_ms(500)
+    time.sleep_ms(600)
 
-    # 3. MODE 1 (Días: 3 dígitos -> 000) + ventana de 2.1s
+    # 3. MODE 1 (Días: 3 dígitos -> 000) + espera de 2.1s de ventana numérica
     send(CODES['MODE'])
-    time.sleep_ms(500)
-    send(digit_code(0)); time.sleep_ms(180)
-    send(digit_code(0)); time.sleep_ms(180)
+    time.sleep_ms(600)
+    send(digit_code(0)); time.sleep_ms(200)
+    send(digit_code(0)); time.sleep_ms(200)
     send(digit_code(0)); time.sleep_ms(2100)
 
-    # 4. MODE 2 (Horas: 2 dígitos -> 00) + ventana de 2.1s
+    # 4. MODE 2 (Horas: 2 dígitos -> 00) + espera de 2.1s de ventana numérica
     send(CODES['MODE'])
-    time.sleep_ms(500)
-    send(digit_code(0)); time.sleep_ms(180)
+    time.sleep_ms(600)
+    send(digit_code(0)); time.sleep_ms(200)
     send(digit_code(0)); time.sleep_ms(2100)
 
-    # 5. MODE 3 (Minutos: 2 dígitos -> MM) + ventana de 2.1s
+    # 5. MODE 3 (Minutos: 2 dígitos -> MM) + espera de 2.1s de ventana numérica
     send(CODES['MODE'])
-    time.sleep_ms(500)
+    time.sleep_ms(600)
     m_dec = (prog_m % 100) // 10
     m_uni = prog_m % 10
-    send(digit_code(m_dec)); time.sleep_ms(180)
+    send(digit_code(m_dec)); time.sleep_ms(200)
     send(digit_code(m_uni)); time.sleep_ms(2100)
 
-    # 6. MODE 4 (Segundos: 2 dígitos -> SS) + ventana de 2.2s
+    # 6. MODE 4 (Segundos: 2 dígitos -> SS) + espera de 2.2s de ventana numérica
     # CRÍTICO: La ventana de 2.2s DEBE esperarse también en Segundos antes de PLAY1,
     # de lo contrario el reloj ignora PLAY1 por tener la entrada abierta y cancela los segundos!
     send(CODES['MODE'])
-    time.sleep_ms(500)
+    time.sleep_ms(600)
     s_dec = (prog_s % 60) // 10
     s_uni = prog_s % 60
-    send(digit_code(s_dec)); time.sleep_ms(180)
+    send(digit_code(s_dec)); time.sleep_ms(200)
     send(digit_code(s_uni)); time.sleep_ms(2200)
 
     # 7. Iniciar con PLAY
