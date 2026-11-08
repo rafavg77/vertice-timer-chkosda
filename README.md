@@ -11,6 +11,8 @@ Programming a countdown on this clock with the stock 36-key membrane remote take
 | Component | ESP32 Pin | Notes |
 | :--- | :--- | :--- |
 | **IR LED (940 nm) + NPN Driver** | `GPIO 4` | Driven via 1 kΩ base resistor into a 2N2222 / BC547 switching 5V (`VIN`) through a 47–100 Ω current-limiting resistor. |
+| **BOOT Button (Factory Wi-Fi Reset)** | `GPIO 0` | Built-in `BOOT` button. Hold for **3 seconds** at any time to blink the onboard LED (`GPIO 2`), wipe `/wifi_config.json`, and reboot into the open `Vertice24-Timer` setup AP. |
+| **Onboard Status LED** | `GPIO 2` | Blinks rapidly while holding `BOOT` and flashes 20× when Wi-Fi credentials are reset. |
 | **IR Receiver (VS1838B)** *(optional)* | `GPIO 14` | Used only during initial remote sniffing (`3.3V`, `GND`, `OUT -> GPIO 14`). |
 
 ```text
@@ -163,7 +165,9 @@ flowchart TD
 
 - **First Boot / Unconfigured:** Broadcasts an **open Wi-Fi network** named `Vertice24-Timer` (no password). Connect and open `http://192.168.4.1/` to select your local Wi-Fi network and enter its password.
 - **Normal Operation:** Once connected to your local network, the ESP32 shuts down the `Vertice24-Timer` access point (`ap.active(False)`) and serves the timer control console over HTTP on its assigned LAN IP (`http://<device-ip>/`).
-- **Reconfiguring Wi-Fi:** Tap the `⚙️ Wi-Fi` button in the top-right corner of the console (`http://<device-ip>/setup`) or delete `/wifi_config.json` on the ESP32.
+- **Reconfiguring / Resetting Wi-Fi:**
+  - **Hardware Button Reset:** Hold the physical **`BOOT` button (`GPIO 0`)** on the ESP32 for **3 seconds** (either at boot or while running). The onboard blue LED (`GPIO 2`) will blink while held, flash rapidly for 2 seconds, delete `/wifi_config.json`, and reboot directly into the open `Vertice24-Timer` access point (`http://192.168.4.1/`).
+  - **Web UI:** Tap the `⚙️ Wi-Fi` button in the top-right corner of the console (`http://<device-ip>/setup`).
 
 ---
 

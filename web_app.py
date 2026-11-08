@@ -2,12 +2,15 @@ import socket
 import network
 import _thread
 import time
+import machine
 import ir_tx
 import wifi_mgr
 
 is_transmitting = False
 current_mode = 'control'
 local_ip = '0.0.0.0'
+boot_btn = machine.Pin(0, machine.Pin.IN, machine.Pin.PULL_UP)
+status_led = machine.Pin(2, machine.Pin.OUT, value=0)
 
 HTML_SETUP = """<!DOCTYPE html>
 <html lang="es">
@@ -514,11 +517,39 @@ def start_server(port=80):
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind(addr)
     s.listen(5)
+    s.settimeout(0.25)
     print('Servidor Web iniciado en puerto', port, '| Modo:', current_mode)
+    btn_pressed_since = None
 
     while True:
         try:
-            cl, addr_client = s.accept()
+            # Revisar si el botón físico BOOT (GPIO 0) está presionado para reset de Wi-Fi (3 segundos)
+            if boot_btn.value() == 0:
+                if btn_pressed_since is None:
+                    btn_pressed_since = time.ticks_ms()
+                    print('Botón BOOT presionado...')
+                else:
+                    elapsed = time.ticks_diff(time.ticks_ms(), btn_pressed_since)
+                    # Parpadear LED mientras se mantiene presionado
+                    status_led.value((elapsed // 100) % 2)
+                    if elapsed >= 3000:
+                        print('¡Reset Wi-Fi por botón BOOT! Borrando configuración y levantando AP Vertice24-Timer...')
+                        wifi_mgr.clear_config()
+                        for _ in range(20):
+                            status_led.value(1)
+                            time.sleep_ms(50)
+                            status_led.value(0)
+                            time.sleep_ms(50)
+                        machine.reset()
+            else:
+                if btn_pressed_since is not None:
+                    btn_pressed_since = None
+                    status_led.value(0)
+
+            try:
+                cl, addr_client = s.accept()
+            except OSError:
+                continue
             cl.settimeout(2.5)
             req = b''
             try:
