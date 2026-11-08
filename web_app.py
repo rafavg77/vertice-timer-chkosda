@@ -634,15 +634,20 @@ def parse_query(qs):
             params[k] = wifi_mgr.unquote(v)
     return params
 
-def send_resp(cl, body, ctype='text/html; charset=utf-8', status='200 OK'):
+def send_resp(cl, body, ctype="text/html; charset=utf-8", status="200 OK"):
+    import gc
+    gc.collect()
     if isinstance(body, str):
         raw = body.encode()
     else:
         raw = body
-    header = 'HTTP/1.1 ' + status + '\r\nContent-Type: ' + ctype + '\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: ' + str(len(raw)) + '\r\nConnection: close\r\n\r\n'
+    header = "HTTP/1.1 " + status + "\r\nContent-Type: " + ctype + "\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: " + str(len(raw)) + "\r\nConnection: close\r\n\r\n"
     cl.write(header.encode())
-    for i in range(0, len(raw), 1024):
-        cl.write(raw[i:i+1024])
+    mv = memoryview(raw)
+    n = len(raw)
+    for i in range(0, n, 1024):
+        cl.write(mv[i:min(i+1024, n)])
+    gc.collect()
 
 def start_server(port=80):
     global current_mode, local_ip
