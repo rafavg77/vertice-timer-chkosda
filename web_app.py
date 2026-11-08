@@ -460,7 +460,7 @@ function triggerTimer(m, s) {
   const disp = document.getElementById('live_timer');
   const st = document.getElementById('status_msg');
   disp.innerText = formatTime(m * 60 + s);
-  st.innerText = 'Programando reloj por IR (~11s)...';
+  st.innerText = 'Programando reloj por IR (~10s)...';
   st.style.color = '#FF9F0A';
   setButtonsDisabled(true);
   
@@ -538,8 +538,50 @@ function closeMamModal() {
   document.getElementById('mam_modal').classList.remove('active');
 }
 
+function syncTimerState(t) {
+  if (!t) return;
+  const disp = document.getElementById('live_timer');
+  const st = document.getElementById('status_msg');
+  if (t.status === 'programming') {
+    if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+    disp.innerText = formatTime(t.total);
+    disp.style.color = '#FF9F0A';
+    st.innerText = '⏳ Programando reloj por IR (~10s)...';
+    st.style.color = '#FF9F0A';
+    setButtonsDisabled(true);
+  } else if (t.status === 'running') {
+    disp.style.color = '#30D158';
+    st.innerText = 'Temporizador activo';
+    st.style.color = '#30D158';
+    setButtonsDisabled(false);
+    if (!countdownInterval || Math.abs(remainingSeconds - t.rem) > 1) {
+      startLocalTimer(t.rem);
+    }
+  } else if (t.status === 'ended') {
+    if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+    disp.innerText = '00:00';
+    disp.style.color = '#FF453A';
+    st.innerText = '¡Tiempo concluido!';
+    st.style.color = '#FF453A';
+    setButtonsDisabled(false);
+  } else if (t.status === 'idle') {
+    if (countdownInterval) {
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+      disp.innerText = '--:--';
+      disp.style.color = '#FFFFFF';
+      st.innerText = 'Listo para transmitir';
+      st.style.color = 'var(--text-secondary)';
+      setButtonsDisabled(false);
+    }
+  }
+}
+
 function loadMam() {
-  fetch('/mam-status').then(r => r.json()).then(renderMam).catch(() => {});
+  fetch('/mam-status').then(r => r.json()).then(d => {
+    renderMam(d);
+    if (d && d.timer) syncTimerState(d.timer);
+  }).catch(() => {});
 }
 
 function saveMam() {
@@ -564,11 +606,30 @@ function saveMam() {
 }
 
 loadMam();
-setInterval(loadMam, 5000);
+setInterval(loadMam, 1500);
 </script>
 </body>
 </html>
 """
+
+active_timer = {
+    'running': False,
+    'total_s': 0,
+    'started_at_ms': 0,
+    'programming': False,
+}
+
+def _get_timer_state():
+    if active_timer['programming']:
+        return {'status': 'programming', 'rem': active_timer['total_s'], 'total': active_timer['total_s']}
+    if active_timer['running']:
+        elapsed_s = time.ticks_diff(time.ticks_ms(), active_timer['started_at_ms']) // 1000
+        rem = active_timer['total_s'] - elapsed_s
+        if rem <= 0:
+            active_timer['running'] = False
+            return {'status': 'ended', 'rem': 0, 'total': active_timer['total_s']}
+        return {'status': 'running', 'rem': rem, 'total': active_timer['total_s']}
+    return {'status': 'idle', 'rem': 0, 'total': 0}
 
 def _do_countdown(m, s):
     global is_transmitting
@@ -576,9 +637,17 @@ def _do_countdown(m, s):
         return
     try:
         is_transmitting = True
+        active_timer['total_s'] = m * 60 + s
+        active_timer['programming'] = True
+        active_timer['running'] = False
         ir_tx.countdown(m, s)
+        active_timer['started_at_ms'] = time.ticks_ms()
+        active_timer['programming'] = False
+        active_timer['running'] = True
     except Exception as e:
         print('Error countdown:', e)
+        active_timer['programming'] = False
+        active_timer['running'] = False
     finally:
         is_transmitting = False
 
@@ -588,9 +657,15 @@ def _do_action(act):
         return
     try:
         is_transmitting = True
-        if act == 'ret': ir_tx.return_to_clock()
-        elif act == 'play': ir_tx.send(ir_tx.CODES['PLAY1'])
-        elif act == 'mute': ir_tx.send(ir_tx.CODES['MUTE'])
+        if act == 'ret':
+            ir_tx.return_to_clock()
+            active_timer['running'] = False
+            active_timer['programming'] = False
+            active_timer['total_s'] = 0
+        elif act == 'play':
+            ir_tx.send(ir_tx.CODES['PLAY1'])
+        elif act == 'mute':
+            ir_tx.send(ir_tx.CODES['MUTE'])
     except Exception as e:
         print('Error action:', e)
     finally:
@@ -723,7 +798,7 @@ def start_server(port=80):
                 send_resp(cl, json.dumps(nets), ctype='application/json')
             elif path == '/status':
                 import json
-                send_resp(cl, json.dumps({'status': 'ok', 'service': 'vertice24-timer', 'ip': local_ip, 'transmitting': is_transmitting}), ctype='application/json')
+                send_resp(cl, json.dumps({'status': 'ok', 'service': 'vertice24-timer', 'ip': local_ip, 'transmitting': is_transmitting, 'timer': _get_timer_state()}), ctype='application/json')
             elif path == '/save-wifi':
                 params = parse_query(qs)
                 raw_ssid = params.get('ssid', '')
@@ -740,12 +815,16 @@ def start_server(port=80):
                     send_resp(cl, 'Error: No se pudo conectar a ' + clean_ssid + '. Verifica la clave.', ctype='text/plain; charset=utf-8')
             elif path == '/mam-status':
                 import json
-                send_resp(cl, json.dumps(mam_link.status()), ctype='application/json')
+                st = mam_link.status()
+                st['timer'] = _get_timer_state()
+                send_resp(cl, json.dumps(st), ctype='application/json')
             elif path == '/mam-save':
                 import json
                 params = parse_query(qs)
                 mam_link.save(params.get('url', ''), params.get('enabled', '1') == '1', mam_link.cfg['key'])
-                send_resp(cl, json.dumps(mam_link.status()), ctype='application/json')
+                st = mam_link.status()
+                st['timer'] = _get_timer_state()
+                send_resp(cl, json.dumps(st), ctype='application/json')
             elif path == '/setup':
                 send_resp(cl, HTML_SETUP)
             elif path == '/timer':
