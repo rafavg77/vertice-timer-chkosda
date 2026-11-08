@@ -456,26 +456,20 @@ function startLocalTimer(totalSec) {
 function triggerTimer(m, s) {
   if (isBusy) return;
   if (navigator.vibrate) navigator.vibrate(10);
-  clearInterval(countdownInterval);
-  const disp = document.getElementById('live_timer');
+  const total = m * 60 + s;
+  startLocalTimer(total);
   const st = document.getElementById('status_msg');
-  disp.innerText = formatTime(m * 60 + s);
-  st.innerText = 'Programando reloj por IR (~10s)...';
-  st.style.color = '#FF9F0A';
-  setButtonsDisabled(true);
+  st.innerText = 'Sincronizando reloj de pared...';
+  st.style.color = '#30D158';
   
   fetch('/timer?m=' + m + '&s=' + s)
     .then(r => r.text())
     .then(msg => {
       st.innerText = msg;
-      st.style.color = '#30D158';
-      startLocalTimer(m * 60 + s);
-      setButtonsDisabled(false);
     })
     .catch(e => {
       st.innerText = 'Error de conexión';
       st.style.color = '#FF453A';
-      setButtonsDisabled(false);
     });
 }
 
@@ -542,19 +536,12 @@ function syncTimerState(t) {
   if (!t) return;
   const disp = document.getElementById('live_timer');
   const st = document.getElementById('status_msg');
-  if (t.status === 'programming') {
-    if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
-    disp.innerText = formatTime(t.total);
-    disp.style.color = '#FF9F0A';
-    st.innerText = '⏳ Programando reloj por IR (~10s)...';
-    st.style.color = '#FF9F0A';
-    setButtonsDisabled(true);
-  } else if (t.status === 'running') {
+  if (t.status === 'running') {
     disp.style.color = '#30D158';
-    st.innerText = 'Temporizador activo';
+    st.innerText = t.programming ? 'Sincronizando reloj de pared...' : 'Temporizador en marcha';
     st.style.color = '#30D158';
     setButtonsDisabled(false);
-    if (!countdownInterval || Math.abs(remainingSeconds - t.rem) > 1) {
+    if (!countdownInterval || Math.abs(remainingSeconds - t.rem) > 2) {
       startLocalTimer(t.rem);
     }
   } else if (t.status === 'ended') {
@@ -638,17 +625,15 @@ def _do_countdown(m, s):
     try:
         is_transmitting = True
         active_timer['total_s'] = m * 60 + s
-        active_timer['programming'] = True
-        active_timer['running'] = False
-        ir_tx.countdown(m, s)
         active_timer['started_at_ms'] = time.ticks_ms()
-        active_timer['programming'] = False
         active_timer['running'] = True
+        active_timer['programming'] = True
+        ir_tx.countdown(m, s, offset_sec=10)
     except Exception as e:
         print('Error countdown:', e)
-        active_timer['programming'] = False
         active_timer['running'] = False
     finally:
+        active_timer['programming'] = False
         is_transmitting = False
 
 def _do_action(act):
