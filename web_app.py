@@ -269,7 +269,38 @@ HTML_CONTROL = """<!DOCTYPE html>
   .btn-wifi-config {
     background: rgba(255, 255, 255, 0.08); border: 1px solid var(--glass-border); color: var(--text-secondary);
     padding: 4px 10px; border-radius: 999px; font-size: 0.75rem; text-decoration: none; font-weight: 500;
+    cursor: pointer;
   }
+  .top-actions { display: flex; align-items: center; gap: 6px; }
+
+  /* Modal MAM */
+  .modal-overlay {
+    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
+    z-index: 100; align-items: center; justify-content: center; padding: 1rem;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal-card {
+    background: var(--glass-card); border: 1px solid var(--glass-border); border-radius: 20px;
+    width: 100%; max-width: 360px; padding: 1.25rem; display: flex; flex-direction: column; gap: 0.8rem;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+  }
+  .modal-header { display: flex; justify-content: space-between; align-items: center; }
+  .modal-title { font-size: 0.95rem; font-weight: 700; color: #FFF; }
+  .modal-close { background: none; border: none; color: var(--text-secondary); font-size: 1.2rem; cursor: pointer; padding: 0 4px; }
+  .mam-chip { font-size: 0.7rem; font-weight: 600; padding: 2px 9px; border-radius: 999px; background: rgba(255,255,255,0.08); color: var(--text-secondary); }
+  .mam-chip.ok { background: rgba(48,209,88,0.18); color: #30D158; }
+  .mam-chip.err { background: rgba(255,69,58,0.18); color: #FF453A; }
+  .mam-input {
+    width: 100%; height: 42px; background: rgba(0,0,0,0.5); border: 1px solid var(--glass-border);
+    border-radius: 12px; color: var(--text-primary); font-size: 0.85rem; padding: 0 0.75rem;
+    font-family: ui-monospace, "SF Mono", monospace;
+  }
+  .mam-save {
+    background: var(--apple-blue); border: none; color: #FFF; border-radius: 12px; height: 42px;
+    font-size: 0.9rem; font-weight: 600; cursor: pointer; width: 100%;
+  }
+  .mam-toggle { font-size: 0.8rem; color: var(--text-secondary); display: flex; align-items: center; gap: 0.5rem; }
   .header { text-align: center; }
   h1 { font-size: 1.65rem; font-weight: 700; letter-spacing: -0.03em; }
   .subtitle { font-size: 0.85rem; color: var(--text-secondary); margin-top: 2px; }
@@ -323,46 +354,16 @@ HTML_CONTROL = """<!DOCTYPE html>
     border-radius: 12px; min-height: 44px; font-size: 0.95rem; font-weight: 600; cursor: pointer;
   }
   .btn-start-custom:disabled { opacity: 0.45; cursor: not-allowed; }
-
-  .mam-card {
-    background: rgba(28, 28, 30, 0.5); border: 1px solid var(--glass-border); border-radius: 16px;
-    padding: 0.7rem 0.8rem; display: flex; flex-direction: column; gap: 0.5rem;
-  }
-  .mam-head { display: flex; justify-content: space-between; align-items: center; }
-  .mam-title { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; color: var(--text-secondary); }
-  .mam-chip { font-size: 0.7rem; font-weight: 600; padding: 2px 9px; border-radius: 999px; background: rgba(255,255,255,0.08); color: var(--text-secondary); }
-  .mam-chip.ok { background: rgba(48,209,88,0.18); color: #30D158; }
-  .mam-chip.err { background: rgba(255,69,58,0.18); color: #FF453A; }
-  .mam-row { display: flex; gap: 0.5rem; }
-  .mam-input {
-    flex: 1; min-width: 0; height: 38px; background: rgba(0,0,0,0.5); border: 1px solid var(--glass-border);
-    border-radius: 10px; color: var(--text-primary); font-size: 0.82rem; padding: 0 0.6rem;
-    font-family: ui-monospace, "SF Mono", monospace;
-  }
-  .mam-save {
-    background: var(--apple-blue); border: none; color: #FFF; border-radius: 10px; padding: 0 0.9rem;
-    font-size: 0.82rem; font-weight: 600; cursor: pointer;
-  }
-  .mam-toggle { font-size: 0.78rem; color: var(--text-secondary); display: flex; align-items: center; gap: 0.4rem; }
 </style>
 </head>
 <body>
 <div class="app-container">
   <div class="top-bar">
     <div class="brand-badge"><span class="pulse-dot"></span> Vertice24 Timer</div>
-    <a href="/setup" class="btn-wifi-config">⚙️ Wi-Fi</a>
-  </div>
-
-  <div class="mam-card">
-    <div class="mam-head">
-      <span class="mam-title">Servidor MAM</span>
-      <span class="mam-chip" id="mam_chip">...</span>
+    <div class="top-actions">
+      <button onclick="openMamModal()" class="btn-wifi-config" id="top_mam_btn">☁️ MAM: ...</button>
+      <a href="/setup" class="btn-wifi-config">⚙️ Wi-Fi</a>
     </div>
-    <div class="mam-row">
-      <input type="text" class="mam-input" id="mam_url" placeholder="http://mam.ejemplo.com" autocapitalize="off" autocorrect="off" spellcheck="false">
-      <button class="mam-save" id="mam_save" onclick="saveMam()">Guardar</button>
-    </div>
-    <label class="mam-toggle"><input type="checkbox" id="mam_enabled" checked> Sincronizar con MAM</label>
   </div>
 
   <div class="header">
@@ -393,6 +394,27 @@ HTML_CONTROL = """<!DOCTYPE html>
       <input type="number" class="time-input" id="inp_s" min="0" max="59" value="0" placeholder="00">
     </div>
     <button class="btn-start-custom" onclick="triggerCustom()">Iniciar Temporizador</button>
+  </div>
+</div>
+
+<!-- Modal Servidor MAM -->
+<div class="modal-overlay" id="mam_modal" onclick="if(event.target===this)closeMamModal()">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span class="modal-title">Servidor MAM</span>
+        <span class="mam-chip" id="mam_chip">...</span>
+      </div>
+      <button class="modal-close" onclick="closeMamModal()">&times;</button>
+    </div>
+    <div style="font-size:0.75rem; color:var(--text-secondary);">
+      Ingresa la URL base de tu servidor MAM (ej. <code>http://mam.vertice24.com</code>). Los endpoints de sincronización ya están integrados.
+    </div>
+    <input type="text" class="mam-input" id="mam_url" placeholder="http://mam.colli.co" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <label class="mam-toggle">
+      <input type="checkbox" id="mam_enabled" checked> Sincronizar automáticamente con MAM
+    </label>
+    <button class="mam-save" id="mam_save" onclick="saveMam()">Guardar y Conectar</button>
   </div>
 </div>
 
@@ -492,12 +514,28 @@ function triggerCustom() {
 
 function renderMam(d) {
   const chip = document.getElementById('mam_chip');
+  const topBtn = document.getElementById('top_mam_btn');
   const inp = document.getElementById('mam_url');
-  if (document.activeElement !== inp) inp.value = d.url;
+  if (document.activeElement !== inp && d.url) inp.value = d.url;
   document.getElementById('mam_enabled').checked = d.enabled;
-  if (!d.enabled) { chip.className = 'mam-chip'; chip.innerText = 'Desactivado'; }
-  else if (d.linked) { chip.className = 'mam-chip ok'; chip.innerText = 'Conectado'; }
-  else { chip.className = 'mam-chip err'; chip.innerText = d.error ? 'Sin conexion' : 'Conectando...'; }
+  if (!d.enabled) {
+    if (chip) { chip.className = 'mam-chip'; chip.innerText = 'Desactivado'; }
+    if (topBtn) { topBtn.innerText = '☁️ MAM: OFF'; topBtn.style.color = 'var(--text-secondary)'; }
+  } else if (d.linked) {
+    if (chip) { chip.className = 'mam-chip ok'; chip.innerText = 'Conectado'; }
+    if (topBtn) { topBtn.innerText = '☁️ MAM: Online'; topBtn.style.color = '#30D158'; }
+  } else {
+    if (chip) { chip.className = 'mam-chip err'; chip.innerText = d.error ? 'Sin conexión' : 'Conectando...'; }
+    if (topBtn) { topBtn.innerText = '☁️ MAM: Sin conexión'; topBtn.style.color = '#FF453A'; }
+  }
+}
+
+function openMamModal() {
+  document.getElementById('mam_modal').classList.add('active');
+}
+
+function closeMamModal() {
+  document.getElementById('mam_modal').classList.remove('active');
 }
 
 function loadMam() {
@@ -508,11 +546,21 @@ function saveMam() {
   const url = encodeURIComponent(document.getElementById('mam_url').value.trim());
   const en = document.getElementById('mam_enabled').checked ? '1' : '0';
   const btn = document.getElementById('mam_save');
-  btn.innerText = '...';
+  btn.innerText = 'Guardando...';
   fetch('/mam-save?url=' + url + '&enabled=' + en)
     .then(r => r.json())
-    .then(d => { renderMam(d); btn.innerText = 'Guardado'; setTimeout(() => btn.innerText = 'Guardar', 1500); })
-    .catch(() => { btn.innerText = 'Error'; setTimeout(() => btn.innerText = 'Guardar', 1500); });
+    .then(d => {
+      renderMam(d);
+      btn.innerText = '¡Guardado!';
+      setTimeout(() => {
+        btn.innerText = 'Guardar y Conectar';
+        closeMamModal();
+      }, 700);
+    })
+    .catch(() => {
+      btn.innerText = 'Error al guardar';
+      setTimeout(() => btn.innerText = 'Guardar y Conectar', 1500);
+    });
 }
 
 loadMam();
