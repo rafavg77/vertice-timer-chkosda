@@ -17,12 +17,12 @@ def blink_led(times=10, on_ms=100, off_ms=100):
         led.value(0)
         time.sleep_ms(off_ms)
 
-# Verificar si el botón BOOT se mantiene presionado al arrancar para restaurar Wi-Fi
+# Verificar si el botón BOOT se mantiene presionado al arrancar para restaurar Wi-Fi (8 segundos continuo)
 if boot_btn.value() == 0:
-    print('Botón BOOT detectado en arranque. Mantén presionado 3 segundos para borrar Wi-Fi...')
+    print('Botón BOOT detectado en arranque. Mantén presionado 8 segundos para borrar Wi-Fi...')
     t_press = time.ticks_ms()
     reset_triggered = True
-    while time.ticks_diff(time.ticks_ms(), t_press) < 3000:
+    while time.ticks_diff(time.ticks_ms(), t_press) < 8000:
         if boot_btn.value() != 0:
             reset_triggered = False
             break

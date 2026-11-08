@@ -522,6 +522,7 @@ function triggerTimer(m, s) {
   if (isBusy) return;
   if (navigator.vibrate) navigator.vibrate(10);
   const total = m * 60 + s;
+  activeTimerRunning = true;
   startLocalTimer(total);
   const st = document.getElementById('status_msg');
   st.innerText = 'Sincronizando reloj de pared...';
@@ -531,10 +532,12 @@ function triggerTimer(m, s) {
     .then(r => r.text())
     .then(msg => {
       st.innerText = msg;
+      scheduleSmartPoll(1000);
     })
     .catch(e => {
       st.innerText = 'Error de conexión';
       st.style.color = '#FF453A';
+      scheduleSmartPoll(5000);
     });
 }
 
@@ -547,6 +550,7 @@ function triggerAction(action, label) {
   setButtonsDisabled(true);
   
   if (action === 'ret') {
+    activeTimerRunning = false;
     clearInterval(countdownInterval);
     document.getElementById('live_timer').innerText = '--:--';
   }
@@ -556,11 +560,13 @@ function triggerAction(action, label) {
       st.innerText = msg;
       st.style.color = '#30D158';
       setTimeout(() => setButtonsDisabled(false), 1500);
+      scheduleSmartPoll(calcPollInterval());
     })
     .catch(e => {
       st.innerText = 'Error de conexión';
       st.style.color = '#FF453A';
       setButtonsDisabled(false);
+      scheduleSmartPoll(5000);
     });
 }
 
@@ -572,6 +578,7 @@ function triggerCustom() {
 }
 
 function toggleMamSync(enabled) {
+  mamSyncEnabled = enabled;
   const en = enabled ? '1' : '0';
   const topBtn = document.getElementById('top_mam_btn');
   if (topBtn) topBtn.innerText = enabled ? '☁️ MAM: Conectando...' : '☁️ MAM: OFF';
@@ -579,6 +586,7 @@ function toggleMamSync(enabled) {
     .then(r => r.json())
     .then(d => {
       renderMam(d);
+      scheduleSmartPoll(calcPollInterval());
     })
     .catch(() => {});
 }
@@ -591,6 +599,7 @@ function renderMam(d) {
   if (document.activeElement !== inp && d.url) inp.value = d.url;
   document.getElementById('mam_enabled').checked = d.enabled;
   if (quickToggle) quickToggle.checked = d.enabled;
+  mamSyncEnabled = !!d.enabled;
   if (!d.enabled) {
     if (chip) { chip.className = 'mam-chip'; chip.innerText = 'Desactivado'; }
     if (topBtn) { topBtn.innerText = '☁️ MAM: OFF'; topBtn.style.color = 'var(--text-secondary)'; }
@@ -605,6 +614,7 @@ function renderMam(d) {
 
 function openMamModal() {
   document.getElementById('mam_modal').classList.add('active');
+  runSmartPoll();
 }
 
 function closeMamModal() {
@@ -616,6 +626,7 @@ function syncTimerState(t) {
   const disp = document.getElementById('live_timer');
   const st = document.getElementById('status_msg');
   if (t.status === 'running') {
+    activeTimerRunning = true;
     disp.style.color = '#30D158';
     st.innerText = t.programming ? 'Sincronizando reloj de pared...' : 'Temporizador en marcha';
     st.style.color = '#30D158';
@@ -624,6 +635,7 @@ function syncTimerState(t) {
       startLocalTimer(t.rem);
     }
   } else if (t.status === 'ended') {
+    activeTimerRunning = false;
     if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
     disp.innerText = '00:00';
     disp.style.color = '#FF453A';
@@ -631,6 +643,7 @@ function syncTimerState(t) {
     st.style.color = '#FF453A';
     setButtonsDisabled(false);
   } else if (t.status === 'idle') {
+    activeTimerRunning = false;
     if (countdownInterval) {
       clearInterval(countdownInterval);
       countdownInterval = null;
@@ -643,12 +656,61 @@ function syncTimerState(t) {
   }
 }
 
-function loadMam() {
-  fetch('/mam-status').then(r => r.json()).then(d => {
-    renderMam(d);
-    if (d && d.timer) syncTimerState(d.timer);
-  }).catch(() => {});
+let pollTimer = null;
+let pollInFlight = false;
+let mamSyncEnabled = false;
+let activeTimerRunning = false;
+
+function calcPollInterval() {
+  // 1. Si hay un timer activo corriendo: sondeo moderado cada 4s
+  if (activeTimerRunning) return 4000;
+  // 2. Si MAM está sincronizando: sondeo cada 6s (evita saturar TCP LwIP)
+  if (mamSyncEnabled) return 6000;
+  // 3. Si MAM está apagado y el reloj está en hora: descanso pasivo (30s)
+  return 30000;
 }
+
+function scheduleSmartPoll(ms) {
+  if (pollTimer) clearTimeout(pollTimer);
+  if (document.hidden) return;
+  pollTimer = setTimeout(runSmartPoll, ms !== undefined ? ms : calcPollInterval());
+}
+
+function runSmartPoll() {
+  if (pollInFlight || document.hidden) {
+    scheduleSmartPoll(calcPollInterval());
+    return;
+  }
+  pollInFlight = true;
+  fetch('/mam-status')
+    .then(r => {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(d => {
+      pollInFlight = false;
+      if (d) {
+        renderMam(d);
+        if (d.timer) {
+          syncTimerState(d.timer);
+        }
+      }
+      scheduleSmartPoll(calcPollInterval());
+    })
+    .catch(() => {
+      pollInFlight = false;
+      // Ante error de red o timeout, retroceso defensivo a 10s
+      scheduleSmartPoll(10000);
+    });
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) {
+    runSmartPoll();
+  } else {
+    if (pollTimer) clearTimeout(pollTimer);
+  }
+});
 
 function saveMam() {
   const url = encodeURIComponent(document.getElementById('mam_url').value.trim());
@@ -660,6 +722,7 @@ function saveMam() {
     .then(d => {
       renderMam(d);
       btn.innerText = '¡Guardado!';
+      scheduleSmartPoll(calcPollInterval());
       setTimeout(() => {
         btn.innerText = 'Guardar y Conectar';
         closeMamModal();
@@ -671,8 +734,8 @@ function saveMam() {
     });
 }
 
-loadMam();
-setInterval(loadMam, 2500);
+// Carga inicial y arranque de Smart Polling
+runSmartPoll();
 </script>
 </body>
 </html>
@@ -802,29 +865,6 @@ def start_server(port=80):
 
     while True:
         try:
-            # Revisar si el botón físico BOOT (GPIO 0) está presionado para reset de Wi-Fi (3 segundos)
-            if boot_btn.value() == 0:
-                if btn_pressed_since is None:
-                    btn_pressed_since = time.ticks_ms()
-                    print('Botón BOOT presionado...')
-                else:
-                    elapsed = time.ticks_diff(time.ticks_ms(), btn_pressed_since)
-                    # Parpadear LED mientras se mantiene presionado
-                    status_led.value((elapsed // 100) % 2)
-                    if elapsed >= 3000:
-                        print('¡Reset Wi-Fi por botón BOOT! Borrando configuración y levantando AP Vertice24-Timer...')
-                        wifi_mgr.clear_config()
-                        for _ in range(20):
-                            status_led.value(1)
-                            time.sleep_ms(50)
-                            status_led.value(0)
-                            time.sleep_ms(50)
-                        machine.reset()
-            else:
-                if btn_pressed_since is not None:
-                    btn_pressed_since = None
-                    status_led.value(0)
-
             try:
                 cl, addr_client = s.accept()
             except OSError:
@@ -915,10 +955,9 @@ def start_server(port=80):
                     send_resp(cl, 'Transmision ocupada, reintenta en un momento', ctype='text/plain; charset=utf-8')
                     cl.close()
                 else:
-                    # Ejecutar primero la secuencia IR completa y responder en el instante exacto en que se envía PLAY1
-                    _do_countdown(m, s_val)
                     send_resp(cl, 'Temporizador de ' + str(m) + 'm ' + str(s_val) + 's en marcha', ctype='text/plain; charset=utf-8')
                     cl.close()
+                    _do_countdown(m, s_val)
                 continue
             elif path == '/ret':
                 send_resp(cl, 'Regresando a modo reloj...', ctype='text/plain; charset=utf-8')
